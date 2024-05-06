@@ -1,0 +1,131 @@
+# Issue ops
+name: IssueOps
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+    issue-ops:
+        if: ${{ github.event.label.name == 'repo-request' }}
+        runs-on: ubuntu-latest
+        permissions:
+            issues: write
+            contents: read
+        outputs:
+            REPO_NAME: ${{ steps.repo-request.outputs.REPO_NAME }}
+        steps:
+        - name: Issue Forms Body Parser
+          id: parse
+          uses: zentered/issue-forms-body-parser@v2.2.0
+
+        - name: Repository Request Validation
+          id: repo-request 
+          env:
+            GH_TOKEN: ${{ github.token }}
+          run: |
+            repo_name=$(echo '${{ steps.parse.outputs.data }}' | jq -r '.name.text')
+            repo_dept=$(echo '${{ steps.parse.outputs.data }}' | jq -r '.department.text')
+            repo_full_name="$repo_dept-$repo_name"
+
+            echo "REPO_NAME=$repo_full_name" >> "$GITHUB_OUTPUT"
+
+            mention="@${{ github.event.issue.user.login }}: "
+            message="Requested repository '$repo_full_name' will be sent for approval."
+            exitcode=0
+
+            # shall not be empty
+            if [ -z "$repo_full_name" ]; then
+                message="Repository name is empty.";
+                exitcode=1;
+            fi;                  
+            
+            # shall be alphanumeric and minus only
+            if [[ "$repo_full_name" =~ [^\-a-zA-Z0-9] ]]; then 
+                message="Repository name shall be alphanumeric and minus only.";
+                exitcode=1;
+            fi;
+                        
+            # shall not start with minus
+            if [[ "$repo_full_name" == -* ]]; then
+                message="Repository name shall not start with minus.";
+                exitcode=1;
+            fi;
+
+            # shall not end with minus
+            if [[ "$repo_full_name" == *- ]]; then
+                message="Repository name shall not end with minus.";
+                exitcode=1;
+            fi;
+
+            if [ $exitcode -ne 0 ]; then
+                gh issue edit "${{ github.event.issue.number }}" --remove-label repo-request --repo "${{ github.event.repository.full_name }}"
+                message="$message Please fix the issue and try again by applying the label 'repo-request' again to the issue.";
+            fi;
+
+            gh issue comment "${{ github.event.issue.number }}" -b "$mention $message" --repo "${{ github.event.repository.full_name }}"
+            exit $exitcode
+          
+
+    create-repo:
+        needs: issue-ops
+        runs-on: ubuntu-latest
+        environment: repo-creation
+        permissions:
+            issues: write
+            contents: read
+        env: 
+            REPO_OWNER: ${{ vars.ORGANIZATION }}
+            REPO_NAME: ${{ needs.issue-ops.outputs.REPO_NAME }}
+            ISSUE_USER: ${{ github.event.issue.user.login }}
+            ISSUE_NUMBER: ${{ github.event.issue.number }}
+        steps:
+            - name: Create app token
+              uses: actions/create-github-app-token@v1.6.2
+              id: get-workflow-token
+              with:
+                app-id: ${{ vars.APP_ID }}
+                private-key: ${{ secrets.PRIVATE_KEY }}
+                owner: ${{ vars.ORGANIZATION }}
+
+            - name: Create repository
+              id: create-repo
+              env: 
+                GH_TOKEN: ${{ steps.get-workflow-token.outputs.token }}
+              run: |
+                  REPO_URL=$(gh repo create "$REPO_OWNER/$REPO_NAME" --private --clone)
+                  
+                  echo "repo_url=$REPO_URL" >> "$GITHUB_OUTPUT"
+                  echo "Repositeory '$REPO_NAME' has been successully created: $REPO_URL"
+
+            - name: Notify User
+              if: ${{ success() }}
+              env: 
+                  GH_TOKEN: ${{ github.token }}
+                  REPO_URL: ${{ steps.create-repo.outputs.repo_url }}
+              run: |
+                  gh issue comment "$ISSUE_NUMBER" -b "@$ISSUE_USER: Repository '$REPO_OWNER/$REPO_NAME' has been created successfully: $REPO_URL" --repo ${{ github.event.repository.full_name }}
+                  gh issue edit "$ISSUE_NUMBER" --remove-label repo-request --repo ${{ github.event.repository.full_name }}
+
+            - name: Update Project
+              if: ${{ success() }}
+              env: 
+                  GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+                  REPO_URL: ${{ steps.create-repo.outputs.repo_url }}
+                  PROJECTNUMBER: ${{ vars.PROJECT_ID }}
+                  PROJECTOWNER: ${{ vars.PROJECT_OWNER}}
+              run: |
+                project_id=$(gh project list --owner "$PROJECTOWNER" --format json | jq -r ".projects[] | select(.number==$PROJECTNUMBER) | .id")
+                issue_id=$(gh project item-list "$PROJECTNUMBER" --owner "$PROJECTOWNER" --format json | jq -r ".items[] | select(.content.number==$ISSUE_NUMBER) | .id") 
+                gh project item-edit --id "$issue_id" --field-id "${{ vars.RPOJECT_STATUS_FIELD_ID }}" --single-select-option-id "${{ vars.PROJECT_REPO_CREATED_OPTION_ID }}" --project-id "$project_id"
+                gh project item-edit --id "$issue_id" --field-id "${{ vars.PROJECT_URL_FIELD_ID }}" --text "$REPO_URL" --project-id "$project_id"
+                gh project item-edit --id "$issue_id" --field-id "${{ vars.PROJECT_OWNER_FIELD_ID }}" --text "$ISSUE_USER" --project-id "$project_id"
+                gh project item-edit --id "$issue_id" --field-id "${{ vars.PROJECT_CREATED_FIELD_ID }}" --date "$(date +%Y-%m-%d)" --project-id "$project_id"
+
+            - name: Handle Exception
+              if: ${{ failure() }}
+              env: 
+                GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh issue comment "$ISSUE_NUMBER" -b "@$ISSUE_USER: Repository '$REPO_OWNER/$REPO_NAME' creation failed. Please contact the administrator." --repo ${{ github.event.repository.full_name }}
+                     

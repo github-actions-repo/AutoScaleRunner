@@ -1,0 +1,33 @@
+name: '🗒️ Repository Request'
+description: 'Request a new repository.'
+title: '🗒️ Repository Request: '
+labels:
+  # gh label create repo-request / gh label create repo-request -c=#D541D0 -d="Request a new repository"
+  # gh label create issue-ops
+  - 'repo-request'
+  - 'issue-ops'
+projects: 'github-actions-repo/1'
+assignees: 
+  - howsen82
+body:
+  - type: input
+    id: name
+    attributes:
+      label: 'Name'
+      description: 'Name of the repository in lower-case and kebab casing.'
+      placeholder: 'your-name-kebab'
+    validations:
+      required: true
+      
+  - type: dropdown
+    id: department
+    attributes:
+      label: 'Department'
+      description: 'Pick your department. It will be used as a prefix for the repository name.'
+      multiple: false
+      options:
+        - dep1
+        - dep2
+      default: 0
+    validations:
+      required: true
