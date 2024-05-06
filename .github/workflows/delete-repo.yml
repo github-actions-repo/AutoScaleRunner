@@ -1,0 +1,60 @@
+# Delete a repository after approval
+on: 
+  workflow_call:
+    inputs:
+      REPO_NAME:
+        description: 'Repository name'
+        required: true
+        type: string
+      ISSUE_USER:
+        description: 'User who created the issue'
+        required: true
+        type: string
+      ISSUE_NUMBER:
+        description: 'Issue number'
+        required: true
+        type: number
+  
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    environment: repo-cleanup
+    steps:
+      - name: Create app token
+        uses: actions/create-github-app-token@v1.10.0
+        id: get-workflow-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.PRIVATE_KEY }}
+          owner: ${{ vars.ORGANIZATION }}
+
+      - name: Delete repository
+        id: delete-repo
+        env: 
+          GH_TOKEN: ${{ steps.get-workflow-token.outputs.token }}
+          REPO_NAME: ${{ inputs.REPO_NAME }}
+          REPO_OWNER: ${{ vars.REPO_OWNER }}
+        run: |
+            gh repo delete "$REPO_OWNER/$REPO_NAME" --yes
+            echo "Repositeory '$REPO_NAME' has been successully deleted."
+
+      - name: Notify User
+        if: ${{ success() }}
+        env: 
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.ISSUE_NUMBER }}
+          ISSUE_USER: ${{ inputs.ISSUE_USER }}
+          REPO_NAME: ${{ inputs.REPO_NAME }}
+          REPO_OWNER: ${{ vars.REPO_OWNER }}
+        run: |
+            gh issue comment "$ISSUE_NUMBER" -b "@$ISSUE_USER: Repository '$REPO_OWNER/$REPO_NAME' has been deleted successfully." --repo ${{ github.event.repository.full_name }}
+            gh issue close "$ISSUE_NUMBER" --repo ${{ github.event.repository.full_name }}
+
+      - name: Handle Exception
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ inputs.ISSUE_NUMBER }}
+          ISSUE_USER: ${{ inputs.ISSUE_USER }}
+        run: |
+            gh issue comment "$ISSUE_NUMBER" -b "@$ISSUE_USER: Repository '$REPO_OWNER/$REPO_NAME' deletion failed. Please contact the administrator." --repo ${{ github.event.repository.full_name }}
