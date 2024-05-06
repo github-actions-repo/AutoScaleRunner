@@ -38,7 +38,7 @@ jobs:
           REPO_OWNER: ${{ vars.REPO_OWNER }}
         run: |
             gh repo delete "$REPO_OWNER/$REPO_NAME" --yes
-            echo "Repositeory '$REPO_NAME' has been successully deleted."
+            echo "Repository '$REPO_NAME' has been successully deleted."
 
       - name: Notify User
         if: ${{ success() }}
