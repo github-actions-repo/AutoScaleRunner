@@ -1,3 +1,5 @@
+name: Delete Repository
+
 # Delete a repository after approval
 on: 
   workflow_call:
