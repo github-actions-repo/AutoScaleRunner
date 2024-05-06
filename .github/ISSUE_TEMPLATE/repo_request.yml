@@ -6,7 +6,7 @@ labels:
   # gh label create issue-ops
   - 'repo-request'
   - 'issue-ops'
-projects: 'github-actions-repo/3'
+projects: 'github-actions-repo/4'
 assignees: 
   - howsen82
 body:
