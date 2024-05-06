@@ -81,7 +81,7 @@ jobs:
             ISSUE_NUMBER: ${{ github.event.issue.number }}
         steps:
             - name: Create app token
-              uses: actions/create-github-app-token@v1.6.2
+              uses: actions/create-github-app-token@v1.10.0
               id: get-workflow-token
               with:
                 app-id: ${{ vars.APP_ID }}
