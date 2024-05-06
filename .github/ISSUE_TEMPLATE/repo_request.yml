@@ -6,6 +6,8 @@ labels:
   # gh label create issue-ops
   - 'repo-request'
   - 'issue-ops'
+  # - 'delete-repo'
+  # - 'delete-issue'
 projects: 'github-actions-repo/4'
 assignees: 
   - howsen82
